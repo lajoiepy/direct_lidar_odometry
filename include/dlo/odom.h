@@ -9,11 +9,11 @@
 
 #include "dlo/dlo.h"
 
-class dlo::OdomNode {
+class dlo::OdomNode: public rclcpp::Node{
 
 public:
 
-  OdomNode(ros::NodeHandle node_handle);
+  OdomNode();
   ~OdomNode();
 
   static void abort() {
@@ -25,9 +25,9 @@ public:
 
 private:
 
-  void abortTimerCB(const ros::TimerEvent& e);
-  void icpCB(const sensor_msgs::PointCloud2ConstPtr& pc);
-  void imuCB(const sensor_msgs::Imu::ConstPtr& imu);
+  // void abortTimerCB(const ros::TimerEvent& e);
+  void icpCB(const sensor_msgs::msg::PointCloud2::SharedPtr pc);
+  void imuCB(const sensor_msgs::msg::Imu::SharedPtr imu);
   bool saveTrajectory(direct_lidar_odometry::save_traj::Request& req,
                       direct_lidar_odometry::save_traj::Response& res);
 
@@ -67,18 +67,20 @@ private:
 
   double first_imu_time;
 
-  ros::NodeHandle nh;
-  ros::Timer abort_timer;
+  // ros::NodeHandle nh;
+  // ros::Timer abort_timer;
   
-  ros::ServiceServer save_traj_srv;
+  // ros::ServiceServer save_traj_srv;
 
-  ros::Subscriber icp_sub;
-  ros::Subscriber imu_sub;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> br;
 
-  ros::Publisher odom_pub;
-  ros::Publisher pose_pub;
-  ros::Publisher keyframe_pub;
-  ros::Publisher kf_pub;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr icp_sub;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
+
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr keyframe_pub;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr kf_pub;
 
   Eigen::Vector3f origin;
   std::vector<std::pair<Eigen::Vector3f, Eigen::Quaternionf>> trajectory;
@@ -114,7 +116,7 @@ private:
   pcl::PointCloud<PointType>::Ptr source_cloud;
   pcl::PointCloud<PointType>::Ptr target_cloud;
 
-  ros::Time scan_stamp;
+  rclcpp::Time scan_stamp;
 
   double curr_frame_stamp;
   double prev_frame_stamp;

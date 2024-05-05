@@ -17,17 +17,14 @@ void controlC(int sig) {
 
 int main(int argc, char** argv) {
 
-  ros::init(argc, argv, "dlo_map_node");
-  ros::NodeHandle nh("~");
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<dlo::MapNode>();
 
-  signal(SIGTERM, controlC);
-  sleep(0.5);
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executer.add_node(node);
+  executer.spin();
 
-  dlo::MapNode node(nh);
-  ros::AsyncSpinner spinner(1);
-  spinner.start();
-  node.start();
-  ros::waitForShutdown();
+  rclcpp::shutdown();
 
   return 0;
 

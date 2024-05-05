@@ -9,14 +9,20 @@
 
 #include "dlo/odom.h"
 
-std::atomic<bool> dlo::OdomNode::abort_(false);
+#include "dlo/utils.h"
+
+#include <queue>
+
+#include "rclcpp/qos.hpp"
+
+// std::atomic<bool> dlo::OdomNode::abort_(false);
 
 
 /**
  * Constructor
  **/
 
-dlo::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle) {
+dlo::OdomNode::OdomNode() : Node("dlo_odom_node") {
 
   this->getParams();
 
@@ -28,14 +34,15 @@ dlo::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle) {
   this->dlo_initialized = false;
   this->imu_calibrated = false;
 
-  this->icp_sub = this->nh.subscribe("pointcloud", 1, &dlo::OdomNode::icpCB, this);
-  this->imu_sub = this->nh.subscribe("imu", 1, &dlo::OdomNode::imuCB, this);
+  this->icp_sub = this->this->create_subscription<sensor_msgs::msg::PointCloud2>("pointcloud", 1, std::bind(&dlo::OdomNode::icpCB, this, std::placeholders::_1));
+  this->imu_sub = this->create_subscription<sensor_msgs::msg::Imu>("imu", 1, std::bind(&dlo::OdomNode::imuCB, this, std::placeholders::_1));
 
-  this->odom_pub = this->nh.advertise<nav_msgs::Odometry>("odom", 1);
-  this->pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>("pose", 1);
-  this->kf_pub = this->nh.advertise<nav_msgs::Odometry>("kfs", 1, true);
-  this->keyframe_pub = this->nh.advertise<sensor_msgs::PointCloud2>("keyframe", 1, true);
-  this->save_traj_srv = this->nh.advertiseService("save_traj", &dlo::OdomNode::saveTrajectory, this);
+  this->odom_pub = this->create_publisher<nav_msgs::msg::Odometry>("odom", 1);
+  this->pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("pose", 1);
+  this->kf_pub = this->create_publisher<nav_msgs::Odometry>("kfs", 1, true);
+  this->keyframe_pub = this->create_publisher<sensor_msgs::PointCloud2>("keyframe", 1, true);
+  this->br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+  // this->save_traj_srv = this->nh.advertiseService("save_traj", &dlo::OdomNode::saveTrajectory, this);
 
   this->odom.pose.pose.position.x = 0.;
   this->odom.pose.pose.position.y = 0.;
@@ -78,15 +85,15 @@ dlo::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle) {
   this->imu_buffer.set_capacity(this->imu_buffer_size_);
   this->first_imu_time = 0.;
 
-  this->original_scan = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
-  this->current_scan = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
-  this->current_scan_t = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->original_scan = std::make_shared<const pcl::PointCloud<PointType>>();
+  this->current_scan = std::make_shared<const pcl::PointCloud<PointType>>();
+  this->current_scan_t = std::make_shared<const pcl::PointCloud<PointType>>();
 
-  this->keyframe_cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
-  this->keyframes_cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->keyframe_cloud = std::make_shared<const pcl::PointCloud<PointType>>();
+  this->keyframes_cloud = std::make_shared<const pcl::PointCloud<PointType>>();
   this->num_keyframes = 0;
 
-  this->submap_cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->submap_cloud = std::make_shared<const pcl::PointCloud<PointType>>();
   this->submap_hasChanged = true;
   this->submap_kf_idx_prev.clear();
 
@@ -167,7 +174,7 @@ dlo::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle) {
   }
   fclose(file);
 
-  ROS_INFO("DLO Odom Node Initialized");
+  // ROS_INFO("DLO Odom Node Initialized");
 
 }
 
@@ -187,80 +194,80 @@ dlo::OdomNode::~OdomNode() {}
 void dlo::OdomNode::getParams() {
 
   // Version
-  ros::param::param<std::string>("~dlo/version", this->version_, "0.0.0");
+  dlo::declare_param(this, "~dlo/version", this->version_, "0.0.0");
 
   // Frames
-  ros::param::param<std::string>("~dlo/odomNode/odom_frame", this->odom_frame, "odom");
-  ros::param::param<std::string>("~dlo/odomNode/child_frame", this->child_frame, "base_link");
+  dlo::declare_param(this, "~dlo/odomNode/odom_frame", this->odom_frame, "odom");
+  dlo::declare_param(this, "~dlo/odomNode/child_frame", this->child_frame, "base_link");
 
-  // Get Node NS and Remove Leading Character
-  std::string ns = ros::this_node::getNamespace();
-  ns.erase(0,1);
+  // // Get Node NS and Remove Leading Character
+  // std::string ns = ros::this_node::getNamespace();
+  // ns.erase(0,1);
 
-  // Concatenate Frame Name Strings
-  this->odom_frame = ns + "/" + this->odom_frame;
-  this->child_frame = ns + "/" + this->child_frame;
+  // // Concatenate Frame Name Strings
+  // this->odom_frame = ns + "/" + this->odom_frame;
+  // this->child_frame = ns + "/" + this->child_frame;
 
   // Gravity alignment
-  ros::param::param<bool>("~dlo/gravityAlign", this->gravity_align_, false);
+  dlo::declare_param(this, "~dlo/gravityAlign", this->gravity_align_, false);
 
   // Keyframe Threshold
-  ros::param::param<double>("~dlo/odomNode/keyframe/threshD", this->keyframe_thresh_dist_, 0.1);
-  ros::param::param<double>("~dlo/odomNode/keyframe/threshR", this->keyframe_thresh_rot_, 1.0);
+  dlo::declare_param(this, "~dlo/odomNode/keyframe/threshD", this->keyframe_thresh_dist_, 0.1);
+  dlo::declare_param(this, "~dlo/odomNode/keyframe/threshR", this->keyframe_thresh_rot_, 1.0);
 
   // Submap
-  ros::param::param<int>("~dlo/odomNode/submap/keyframe/knn", this->submap_knn_, 10);
-  ros::param::param<int>("~dlo/odomNode/submap/keyframe/kcv", this->submap_kcv_, 10);
-  ros::param::param<int>("~dlo/odomNode/submap/keyframe/kcc", this->submap_kcc_, 10);
+  dlo::declare_param(this, "~dlo/odomNode/submap/keyframe/knn", this->submap_knn_, 10);
+  dlo::declare_param(this, "~dlo/odomNode/submap/keyframe/kcv", this->submap_kcv_, 10);
+  dlo::declare_param(this, "~dlo/odomNode/submap/keyframe/kcc", this->submap_kcc_, 10);
 
   // Initial Position
-  ros::param::param<bool>("~dlo/odomNode/initialPose/use", this->initial_pose_use_, false);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/use", this->initial_pose_use_, false);
 
   double px, py, pz, qx, qy, qz, qw;
-  ros::param::param<double>("~dlo/odomNode/initialPose/position/x", px, 0.0);
-  ros::param::param<double>("~dlo/odomNode/initialPose/position/y", py, 0.0);
-  ros::param::param<double>("~dlo/odomNode/initialPose/position/z", pz, 0.0);
-  ros::param::param<double>("~dlo/odomNode/initialPose/orientation/w", qw, 1.0);
-  ros::param::param<double>("~dlo/odomNode/initialPose/orientation/x", qx, 0.0);
-  ros::param::param<double>("~dlo/odomNode/initialPose/orientation/y", qy, 0.0);
-  ros::param::param<double>("~dlo/odomNode/initialPose/orientation/z", qz, 0.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/position/x", px, 0.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/position/y", py, 0.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/position/z", pz, 0.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/orientation/w", qw, 1.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/orientation/x", qx, 0.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/orientation/y", qy, 0.0);
+  dlo::declare_param(this, "~dlo/odomNode/initialPose/orientation/z", qz, 0.0);
   this->initial_position_ = Eigen::Vector3f(px, py, pz);
   this->initial_orientation_ = Eigen::Quaternionf(qw, qx, qy, qz);
 
   // Crop Box Filter
-  ros::param::param<bool>("~dlo/odomNode/preprocessing/cropBoxFilter/use", this->crop_use_, false);
-  ros::param::param<double>("~dlo/odomNode/preprocessing/cropBoxFilter/size", this->crop_size_, 1.0);
+  dlo::declare_param(this, "~dlo/odomNode/preprocessing/cropBoxFilter/use", this->crop_use_, false);
+  dlo::declare_param(this, "~dlo/odomNode/preprocessing/cropBoxFilter/size", this->crop_size_, 1.0);
 
   // Voxel Grid Filter
-  ros::param::param<bool>("~dlo/odomNode/preprocessing/voxelFilter/scan/use", this->vf_scan_use_, true);
-  ros::param::param<double>("~dlo/odomNode/preprocessing/voxelFilter/scan/res", this->vf_scan_res_, 0.05);
-  ros::param::param<bool>("~dlo/odomNode/preprocessing/voxelFilter/submap/use", this->vf_submap_use_, false);
-  ros::param::param<double>("~dlo/odomNode/preprocessing/voxelFilter/submap/res", this->vf_submap_res_, 0.1);
+  dlo::declare_param(this, "~dlo/odomNode/preprocessing/voxelFilter/scan/use", this->vf_scan_use_, true);
+  dlo::declare_param(this, "~dlo/odomNode/preprocessing/voxelFilter/scan/res", this->vf_scan_res_, 0.05);
+  dlo::declare_param(this, "~dlo/odomNode/preprocessing/voxelFilter/submap/use", this->vf_submap_use_, false);
+  dlo::declare_param(this, "~dlo/odomNode/preprocessing/voxelFilter/submap/res", this->vf_submap_res_, 0.1);
 
   // Adaptive Parameters
-  ros::param::param<bool>("~dlo/adaptiveParams", this->adaptive_params_use_, false);
+  dlo::declare_param(this, "~dlo/adaptiveParams", this->adaptive_params_use_, false);
 
   // IMU
-  ros::param::param<bool>("~dlo/imu", this->imu_use_, false);
-  ros::param::param<int>("~dlo/odomNode/imu/calibTime", this->imu_calib_time_, 3);
-  ros::param::param<int>("~dlo/odomNode/imu/bufferSize", this->imu_buffer_size_, 2000);
+  dlo::declare_param(this, "~dlo/imu", this->imu_use_, false);
+  dlo::declare_param(this, "~dlo/odomNode/imu/calibTime", this->imu_calib_time_, 3);
+  dlo::declare_param(this, "~dlo/odomNode/imu/bufferSize", this->imu_buffer_size_, 2000);
 
   // GICP
-  ros::param::param<int>("~dlo/odomNode/gicp/minNumPoints", this->gicp_min_num_points_, 100);
-  ros::param::param<int>("~dlo/odomNode/gicp/s2s/kCorrespondences", this->gicps2s_k_correspondences_, 20);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2s/maxCorrespondenceDistance", this->gicps2s_max_corr_dist_, std::sqrt(std::numeric_limits<double>::max()));
-  ros::param::param<int>("~dlo/odomNode/gicp/s2s/maxIterations", this->gicps2s_max_iter_, 64);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2s/transformationEpsilon", this->gicps2s_transformation_ep_, 0.0005);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2s/euclideanFitnessEpsilon", this->gicps2s_euclidean_fitness_ep_, -std::numeric_limits<double>::max());
-  ros::param::param<int>("~dlo/odomNode/gicp/s2s/ransac/iterations", this->gicps2s_ransac_iter_, 0);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2s/ransac/outlierRejectionThresh", this->gicps2s_ransac_inlier_thresh_, 0.05);
-  ros::param::param<int>("~dlo/odomNode/gicp/s2m/kCorrespondences", this->gicps2m_k_correspondences_, 20);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2m/maxCorrespondenceDistance", this->gicps2m_max_corr_dist_, std::sqrt(std::numeric_limits<double>::max()));
-  ros::param::param<int>("~dlo/odomNode/gicp/s2m/maxIterations", this->gicps2m_max_iter_, 64);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2m/transformationEpsilon", this->gicps2m_transformation_ep_, 0.0005);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2m/euclideanFitnessEpsilon", this->gicps2m_euclidean_fitness_ep_, -std::numeric_limits<double>::max());
-  ros::param::param<int>("~dlo/odomNode/gicp/s2m/ransac/iterations", this->gicps2m_ransac_iter_, 0);
-  ros::param::param<double>("~dlo/odomNode/gicp/s2m/ransac/outlierRejectionThresh", this->gicps2m_ransac_inlier_thresh_, 0.05);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/minNumPoints", this->gicp_min_num_points_, 100);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/kCorrespondences", this->gicps2s_k_correspondences_, 20);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/maxCorrespondenceDistance", this->gicps2s_max_corr_dist_, std::sqrt(std::numeric_limits<double>::max()));
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/maxIterations", this->gicps2s_max_iter_, 64);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/transformationEpsilon", this->gicps2s_transformation_ep_, 0.0005);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/euclideanFitnessEpsilon", this->gicps2s_euclidean_fitness_ep_, -std::numeric_limits<double>::max());
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/ransac/iterations", this->gicps2s_ransac_iter_, 0);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2s/ransac/outlierRejectionThresh", this->gicps2s_ransac_inlier_thresh_, 0.05);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/kCorrespondences", this->gicps2m_k_correspondences_, 20);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/maxCorrespondenceDistance", this->gicps2m_max_corr_dist_, std::sqrt(std::numeric_limits<double>::max()));
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/maxIterations", this->gicps2m_max_iter_, 64);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/transformationEpsilon", this->gicps2m_transformation_ep_, 0.0005);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/euclideanFitnessEpsilon", this->gicps2m_euclidean_fitness_ep_, -std::numeric_limits<double>::max());
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/ransac/iterations", this->gicps2m_ransac_iter_, 0);
+  dlo::declare_param(this, "~dlo/odomNode/gicp/s2m/ransac/outlierRejectionThresh", this->gicps2m_ransac_inlier_thresh_, 0.05);
 
 }
 
@@ -270,7 +277,7 @@ void dlo::OdomNode::getParams() {
  **/
 
 void dlo::OdomNode::start() {
-  ROS_INFO("Starting DLO Odometry Node");
+  // ROS_INFO("Starting DLO Odometry Node");
 
   printf("\033[2J\033[1;1H");
   std::cout << std::endl << "==== Direct LiDAR Odometry v" << this->version_ << " ====" << std::endl << std::endl;
@@ -283,7 +290,7 @@ void dlo::OdomNode::start() {
  **/
 
 void dlo::OdomNode::stop() {
-  ROS_WARN("Stopping DLO Odometry Node");
+  // ROS_WARN("Stopping DLO Odometry Node");
 
   this->stop_publish_thread = true;
   if (this->publish_thread.joinable()) {
@@ -305,19 +312,19 @@ void dlo::OdomNode::stop() {
     this->debug_thread.join();
   }
 
-  ros::shutdown();
+  // ros::shutdown();
 }
 
 
-/**
- * Abort Timer Callback
- **/
+// /**
+//  * Abort Timer Callback
+//  **/
 
-void dlo::OdomNode::abortTimerCB(const ros::TimerEvent& e) {
-  if (abort_) {
-    stop();
-  }
-}
+// void dlo::OdomNode::abortTimerCB(const ros::TimerEvent& e) {
+//   if (abort_) {
+//     stop();
+//   }
+// }
 
 
 /**
@@ -386,7 +393,7 @@ void dlo::OdomNode::publishPose() {
 
 void dlo::OdomNode::publishTransform() {
 
-  static tf2_ros::TransformBroadcaster br;
+  // static tf2_ros::TransformBroadcaster br;
   geometry_msgs::TransformStamped transformStamped;
 
   transformStamped.header.stamp = this->scan_stamp;
@@ -479,13 +486,13 @@ void dlo::OdomNode::initializeInputTarget() {
   this->prev_frame_stamp = this->curr_frame_stamp;
 
   // Convert ros message
-  this->target_cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->target_cloud = std::make_shared<pcl::PointCloud<PointType>>();
   this->target_cloud = this->current_scan;
   this->gicp_s2s.setInputTarget(this->target_cloud);
   this->gicp_s2s.calculateTargetCovariances();
 
   // initialize keyframes
-  pcl::PointCloud<PointType>::Ptr first_keyframe (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr first_keyframe = std::make_shared<pcl::PointCloud<PointType>>();
   pcl::transformPointCloud (*this->target_cloud, *first_keyframe, this->T);
 
   // voxelization for submap
@@ -541,9 +548,9 @@ void dlo::OdomNode::gravityAlign() {
 
   // get average acceleration vector for 1 second and normalize
   Eigen::Vector3f lin_accel = Eigen::Vector3f::Zero();
-  const double then = ros::Time::now().toSec();
+  const double then = this->now().toSec();
   int n=0;
-  while ((ros::Time::now().toSec() - then) < 1.) {
+  while ((this->now().toSec() - then) < 1.) {
     lin_accel[0] += this->imu_meas.lin_accel.x;
     lin_accel[1] += this->imu_meas.lin_accel.y;
     lin_accel[2] += this->imu_meas.lin_accel.z;
@@ -633,15 +640,15 @@ void dlo::OdomNode::initializeDLO() {
 
 void dlo::OdomNode::icpCB(const sensor_msgs::PointCloud2ConstPtr& pc) {
 
-  double then = ros::Time::now().toSec();
+  double then = this->now().toSec();
   this->scan_stamp = pc->header.stamp;
   this->curr_frame_stamp = pc->header.stamp.toSec();
 
   // If there are too few points in the pointcloud, try again
-  this->current_scan = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->current_scan = std::make_shared<pcl::PointCloud<PointType>>();
   pcl::fromROSMsg(*pc, *this->current_scan);
   if (this->current_scan->points.size() < this->gicp_min_num_points_) {
-    ROS_WARN("Low number of points!");
+    RCLCPP_WARN("Low number of points!");
     return;
   }
 
@@ -670,7 +677,7 @@ void dlo::OdomNode::icpCB(const sensor_msgs::PointCloud2ConstPtr& pc) {
   }
 
   // Set source frame
-  this->source_cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->source_cloud = std::make_shared<pcl::PointCloud<PointType>>();
   this->source_cloud = this->current_scan;
 
   // Set new frame as input source for both gicp objects
@@ -689,7 +696,7 @@ void dlo::OdomNode::icpCB(const sensor_msgs::PointCloud2ConstPtr& pc) {
   this->prev_frame_stamp = this->curr_frame_stamp;
 
   // Update some statistics
-  this->comp_times.push_back(ros::Time::now().toSec() - then);
+  this->comp_times.push_back(this->now().toSec() - then);
 
   // Publish stuff to ROS
   this->publish_thread = std::thread( &dlo::OdomNode::publishToROS, this );
@@ -801,7 +808,7 @@ void dlo::OdomNode::getNextPose() {
   //
 
   // Align using IMU prior if available
-  pcl::PointCloud<PointType>::Ptr aligned (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr aligned = std::make_shared<pcl::PointCloud<PointType>>();
 
   if (this->imu_use_) {
     this->integrateIMU();
@@ -974,7 +981,7 @@ void dlo::OdomNode::propagateS2M() {
  **/
 
 void dlo::OdomNode::transformCurrentScan() {
-  this->current_scan_t = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  this->current_scan_t = std::make_shared<pcl::PointCloud<PointType>>();
   pcl::transformPointCloud (*this->current_scan, *this->current_scan_t, this->T);
 }
 
@@ -1027,7 +1034,7 @@ void dlo::OdomNode::computeConvexHull() {
   }
 
   // create a pointcloud with points at keyframes
-  pcl::PointCloud<PointType>::Ptr cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr cloud = std::make_shared<pcl::PointCloud<PointType>>();
 
   for (const auto& k : this->keyframes) {
     PointType pt;
@@ -1041,10 +1048,10 @@ void dlo::OdomNode::computeConvexHull() {
   this->convex_hull.setInputCloud(cloud);
 
   // get the indices of the keyframes on the convex hull
-  pcl::PointCloud<PointType>::Ptr convex_points = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr convex_points = std::make_shared<pcl::PointCloud<PointType>>();
   this->convex_hull.reconstruct(*convex_points);
 
-  pcl::PointIndices::Ptr convex_hull_point_idx = pcl::PointIndices::Ptr (new pcl::PointIndices);
+  pcl::PointIndices::Ptr convex_hull_point_idx = pcl::PointIndices::Ptr = std::make_shared<pcl::PointIndices>();
   this->convex_hull.getHullPointIndices(*convex_hull_point_idx);
 
   this->keyframe_convex.clear();
@@ -1067,7 +1074,7 @@ void dlo::OdomNode::computeConcaveHull() {
   }
 
   // create a pointcloud with points at keyframes
-  pcl::PointCloud<PointType>::Ptr cloud = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr cloud = std::make_shared<pcl::PointCloud<PointType>>();
 
   for (const auto& k : this->keyframes) {
     PointType pt;
@@ -1081,10 +1088,10 @@ void dlo::OdomNode::computeConcaveHull() {
   this->concave_hull.setInputCloud(cloud);
 
   // get the indices of the keyframes on the concave hull
-  pcl::PointCloud<PointType>::Ptr concave_points = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr concave_points = std::make_shared<pcl::PointCloud<PointType>>();
   this->concave_hull.reconstruct(*concave_points);
 
-  pcl::PointIndices::Ptr concave_hull_point_idx = pcl::PointIndices::Ptr (new pcl::PointIndices);
+  pcl::PointIndices::Ptr concave_hull_point_idx = std::make_shared<pcl::PointIndices>();
   this->concave_hull.getHullPointIndices(*concave_hull_point_idx);
 
   this->keyframe_concave.clear();
