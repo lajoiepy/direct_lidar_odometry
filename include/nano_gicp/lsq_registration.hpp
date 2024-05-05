@@ -49,6 +49,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/registration/registration.h>
 
+typedef pcl::PointXYZI PointType;
+
 namespace nano_gicp {
 
 enum class LSQ_OPTIMIZER_TYPE { GaussNewton, LevenbergMarquardt };

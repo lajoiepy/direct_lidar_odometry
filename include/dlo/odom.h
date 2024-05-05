@@ -8,6 +8,35 @@
  ***********************************************************/
 
 #include "dlo/dlo.h"
+#include "rclcpp/rclcpp.hpp"
+
+#include <boost/circular_buffer.hpp>
+#include <boost/algorithm/string.hpp>
+
+#include <pcl/filters/crop_box.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/surface/concave_hull.h>
+#include <pcl/surface/convex_hull.h>
+#include <pcl_conversions/pcl_conversions.h>
+// #include <pcl_ros/impl/transforms.hpp>
+// #include <pcl_ros/point_cloud.h>
+// #include <pcl_ros/transforms.h>
+#include <tf2_ros/transform_broadcaster.h>
+
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+// #include <sensor_msgs/CameraInfo.h>
+// #include <sensor_msgs/Image.h>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+
+// #include <direct_lidar_odometry/save_pcd.h>
+// #include <direct_lidar_odometry/save_traj.h>
+#include <nano_gicp/nano_gicp.hpp>
+
+typedef pcl::PointXYZI PointType;
 
 class dlo::OdomNode: public rclcpp::Node{
 
@@ -26,10 +55,10 @@ public:
 private:
 
   // void abortTimerCB(const ros::TimerEvent& e);
-  void icpCB(const sensor_msgs::msg::PointCloud2::SharedPtr pc);
+  void icpCB(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pc);
   void imuCB(const sensor_msgs::msg::Imu::SharedPtr imu);
-  bool saveTrajectory(direct_lidar_odometry::save_traj::Request& req,
-                      direct_lidar_odometry::save_traj::Response& res);
+  // bool saveTrajectory(direct_lidar_odometry::save_traj::Request& req,
+  //                     direct_lidar_odometry::save_traj::Response& res);
 
   void getParams();
 
@@ -80,7 +109,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr keyframe_pub;
-  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr kf_pub;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr kf_pub;
 
   Eigen::Vector3f origin;
   std::vector<std::pair<Eigen::Vector3f, Eigen::Quaternionf>> trajectory;
@@ -129,10 +158,10 @@ private:
   pcl::VoxelGrid<PointType> vf_scan;
   pcl::VoxelGrid<PointType> vf_submap;
 
-  nav_msgs::Odometry odom;
-  nav_msgs::Odometry kf;
+  nav_msgs::msg::Odometry odom;
+  nav_msgs::msg::Odometry kf;
 
-  geometry_msgs::PoseStamped pose_ros;
+  geometry_msgs::msg::PoseStamped pose_ros;
 
   Eigen::Matrix4f T;
   Eigen::Matrix4f T_s2s, T_s2s_prev;

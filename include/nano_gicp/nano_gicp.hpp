@@ -53,6 +53,8 @@
 #include <nano_gicp/gicp/gicp_settings.hpp>
 #include <nano_gicp/nanoflann.hpp>
 
+typedef pcl::PointXYZI PointType;
+
 namespace nano_gicp {
 
 template<typename PointSource, typename PointTarget>

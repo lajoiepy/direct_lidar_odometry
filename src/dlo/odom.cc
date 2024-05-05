@@ -34,13 +34,13 @@ dlo::OdomNode::OdomNode() : Node("dlo_odom_node") {
   this->dlo_initialized = false;
   this->imu_calibrated = false;
 
-  this->icp_sub = this->this->create_subscription<sensor_msgs::msg::PointCloud2>("pointcloud", 1, std::bind(&dlo::OdomNode::icpCB, this, std::placeholders::_1));
+  this->icp_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("pointcloud", 1, std::bind(&dlo::OdomNode::icpCB, this, std::placeholders::_1));
   this->imu_sub = this->create_subscription<sensor_msgs::msg::Imu>("imu", 1, std::bind(&dlo::OdomNode::imuCB, this, std::placeholders::_1));
 
   this->odom_pub = this->create_publisher<nav_msgs::msg::Odometry>("odom", 1);
   this->pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("pose", 1);
-  this->kf_pub = this->create_publisher<nav_msgs::Odometry>("kfs", 1, true);
-  this->keyframe_pub = this->create_publisher<sensor_msgs::PointCloud2>("keyframe", 1, true);
+  this->kf_pub = this->create_publisher<nav_msgs::msg::Odometry>("kfs", 1);
+  this->keyframe_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("keyframe", 1);
   this->br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
   // this->save_traj_srv = this->nh.advertiseService("save_traj", &dlo::OdomNode::saveTrajectory, this);
 
@@ -85,15 +85,15 @@ dlo::OdomNode::OdomNode() : Node("dlo_odom_node") {
   this->imu_buffer.set_capacity(this->imu_buffer_size_);
   this->first_imu_time = 0.;
 
-  this->original_scan = std::make_shared<const pcl::PointCloud<PointType>>();
-  this->current_scan = std::make_shared<const pcl::PointCloud<PointType>>();
-  this->current_scan_t = std::make_shared<const pcl::PointCloud<PointType>>();
+  this->original_scan = std::make_shared<pcl::PointCloud<PointType>>();
+  this->current_scan = std::make_shared<pcl::PointCloud<PointType>>();
+  this->current_scan_t = std::make_shared<pcl::PointCloud<PointType>>();
 
-  this->keyframe_cloud = std::make_shared<const pcl::PointCloud<PointType>>();
-  this->keyframes_cloud = std::make_shared<const pcl::PointCloud<PointType>>();
+  this->keyframe_cloud = std::make_shared<pcl::PointCloud<PointType>>();
+  this->keyframes_cloud = std::make_shared<pcl::PointCloud<PointType>>();
   this->num_keyframes = 0;
 
-  this->submap_cloud = std::make_shared<const pcl::PointCloud<PointType>>();
+  this->submap_cloud = std::make_shared<pcl::PointCloud<PointType>>();
   this->submap_hasChanged = true;
   this->submap_kf_idx_prev.clear();
 
@@ -369,7 +369,7 @@ void dlo::OdomNode::publishPose() {
   this->odom.header.stamp = this->scan_stamp;
   this->odom.header.frame_id = this->odom_frame;
   this->odom.child_frame_id = this->child_frame;
-  this->odom_pub.publish(this->odom);
+  this->odom_pub->publish(this->odom);
 
   this->pose_ros.header.stamp = this->scan_stamp;
   this->pose_ros.header.frame_id = this->odom_frame;
@@ -383,7 +383,7 @@ void dlo::OdomNode::publishPose() {
   this->pose_ros.pose.orientation.y = this->rotq.y();
   this->pose_ros.pose.orientation.z = this->rotq.z();
 
-  this->pose_pub.publish(this->pose_ros);
+  this->pose_pub->publish(this->pose_ros);
 }
 
 
@@ -394,7 +394,7 @@ void dlo::OdomNode::publishPose() {
 void dlo::OdomNode::publishTransform() {
 
   // static tf2_ros::TransformBroadcaster br;
-  geometry_msgs::TransformStamped transformStamped;
+  geometry_msgs::msg::TransformStamped transformStamped;
 
   transformStamped.header.stamp = this->scan_stamp;
   transformStamped.header.frame_id = this->odom_frame;
@@ -409,7 +409,7 @@ void dlo::OdomNode::publishTransform() {
   transformStamped.transform.rotation.y = this->rotq.y();
   transformStamped.transform.rotation.z = this->rotq.z();
 
-  br.sendTransform(transformStamped);
+  br->sendTransform(transformStamped);
 
 }
 
@@ -434,15 +434,15 @@ void dlo::OdomNode::publishKeyframe() {
   this->kf.pose.pose.orientation.y = this->rotq.y();
   this->kf.pose.pose.orientation.z = this->rotq.z();
 
-  this->kf_pub.publish(this->kf);
+  this->kf_pub->publish(this->kf);
 
   // Publish keyframe scan
   if (this->keyframe_cloud->points.size() == this->keyframe_cloud->width * this->keyframe_cloud->height) {
-    sensor_msgs::PointCloud2 keyframe_cloud_ros;
+    sensor_msgs::msg::PointCloud2 keyframe_cloud_ros;
     pcl::toROSMsg(*this->keyframe_cloud, keyframe_cloud_ros);
     keyframe_cloud_ros.header.stamp = this->scan_stamp;
     keyframe_cloud_ros.header.frame_id = this->odom_frame;
-    this->keyframe_pub.publish(keyframe_cloud_ros);
+    this->keyframe_pub->publish(keyframe_cloud_ros);
   }
 
 }
@@ -548,9 +548,9 @@ void dlo::OdomNode::gravityAlign() {
 
   // get average acceleration vector for 1 second and normalize
   Eigen::Vector3f lin_accel = Eigen::Vector3f::Zero();
-  const double then = this->now().toSec();
+  const double then = this->now().seconds();
   int n=0;
-  while ((this->now().toSec() - then) < 1.) {
+  while ((this->now().seconds() - then) < 1.) {
     lin_accel[0] += this->imu_meas.lin_accel.x;
     lin_accel[1] += this->imu_meas.lin_accel.y;
     lin_accel[2] += this->imu_meas.lin_accel.z;
@@ -638,17 +638,17 @@ void dlo::OdomNode::initializeDLO() {
  * ICP Point Cloud Callback
  **/
 
-void dlo::OdomNode::icpCB(const sensor_msgs::PointCloud2ConstPtr& pc) {
+void dlo::OdomNode::icpCB(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pc) {
 
-  double then = this->now().toSec();
+  double then = this->now().seconds();
   this->scan_stamp = pc->header.stamp;
-  this->curr_frame_stamp = pc->header.stamp.toSec();
+  this->curr_frame_stamp = rclcpp::Time(pc->header.stamp).seconds();
 
   // If there are too few points in the pointcloud, try again
   this->current_scan = std::make_shared<pcl::PointCloud<PointType>>();
   pcl::fromROSMsg(*pc, *this->current_scan);
   if (this->current_scan->points.size() < this->gicp_min_num_points_) {
-    RCLCPP_WARN("Low number of points!");
+    RCLCPP_FATAL(this->get_logger(), "Low number of points!");
     return;
   }
 
@@ -696,7 +696,7 @@ void dlo::OdomNode::icpCB(const sensor_msgs::PointCloud2ConstPtr& pc) {
   this->prev_frame_stamp = this->curr_frame_stamp;
 
   // Update some statistics
-  this->comp_times.push_back(this->now().toSec() - then);
+  this->comp_times.push_back(this->now().seconds() - then);
 
   // Publish stuff to ROS
   this->publish_thread = std::thread( &dlo::OdomNode::publishToROS, this );
@@ -713,7 +713,7 @@ void dlo::OdomNode::icpCB(const sensor_msgs::PointCloud2ConstPtr& pc) {
  * IMU Callback
  **/
 
-void dlo::OdomNode::imuCB(const sensor_msgs::Imu::ConstPtr& imu) {
+void dlo::OdomNode::imuCB(const sensor_msgs::msg::Imu::SharedPtr imu) {
 
   if (!this->imu_use_) {
     return;
@@ -731,7 +731,7 @@ void dlo::OdomNode::imuCB(const sensor_msgs::Imu::ConstPtr& imu) {
   lin_accel[2] = imu->linear_acceleration.z;
 
   if (this->first_imu_time == 0.) {
-    this->first_imu_time = imu->header.stamp.toSec();
+    this->first_imu_time = rclcpp::Time(imu->header.stamp).seconds();
   }
 
   // IMU calibration procedure - do for three seconds
@@ -740,7 +740,7 @@ void dlo::OdomNode::imuCB(const sensor_msgs::Imu::ConstPtr& imu) {
     static int num_samples = 0;
     static bool print = true;
 
-    if ((imu->header.stamp.toSec() - this->first_imu_time) < this->imu_calib_time_) {
+    if ((rclcpp::Time(imu->header.stamp).seconds() - this->first_imu_time) < this->imu_calib_time_) {
 
       num_samples++;
 
@@ -777,7 +777,7 @@ void dlo::OdomNode::imuCB(const sensor_msgs::Imu::ConstPtr& imu) {
   } else {
 
     // Apply the calibrated bias to the new IMU measurements
-    this->imu_meas.stamp = imu->header.stamp.toSec();
+    this->imu_meas.stamp = rclcpp::Time(imu->header.stamp).seconds();
 
     this->imu_meas.ang_vel.x = ang_vel[0] - this->imu_bias.gyro.x;
     this->imu_meas.ang_vel.y = ang_vel[1] - this->imu_bias.gyro.y;
@@ -1051,7 +1051,7 @@ void dlo::OdomNode::computeConvexHull() {
   pcl::PointCloud<PointType>::Ptr convex_points = std::make_shared<pcl::PointCloud<PointType>>();
   this->convex_hull.reconstruct(*convex_points);
 
-  pcl::PointIndices::Ptr convex_hull_point_idx = pcl::PointIndices::Ptr = std::make_shared<pcl::PointIndices>();
+  pcl::PointIndices::Ptr convex_hull_point_idx = std::make_shared<pcl::PointIndices>();
   this->convex_hull.getHullPointIndices(*convex_hull_point_idx);
 
   this->keyframe_convex.clear();
@@ -1327,7 +1327,7 @@ void dlo::OdomNode::getSubmapKeyframes() {
     this->submap_hasChanged = true;
 
     // reinitialize submap cloud, normals
-    pcl::PointCloud<PointType>::Ptr submap_cloud_ (boost::make_shared<pcl::PointCloud<PointType>>());
+    pcl::PointCloud<PointType>::Ptr submap_cloud_ (std::make_shared<pcl::PointCloud<PointType>>());
     this->submap_normals.clear();
 
     for (auto k : this->submap_kf_idx_curr) {
@@ -1345,28 +1345,28 @@ void dlo::OdomNode::getSubmapKeyframes() {
 
 }
 
-bool dlo::OdomNode::saveTrajectory(direct_lidar_odometry::save_traj::Request& req,
-                                   direct_lidar_odometry::save_traj::Response& res) {
-  std::string kittipath = req.save_path + "/kitti_traj.txt";
-  std::ofstream out_kitti(kittipath);
+// bool dlo::OdomNode::saveTrajectory(direct_lidar_odometry::save_traj::Request& req,
+//                                    direct_lidar_odometry::save_traj::Response& res) {
+//   std::string kittipath = req.save_path + "/kitti_traj.txt";
+//   std::ofstream out_kitti(kittipath);
 
-  std::cout << std::setprecision(2) << "Saving KITTI trajectory to " << kittipath << "... "; std::cout.flush();
+//   std::cout << std::setprecision(2) << "Saving KITTI trajectory to " << kittipath << "... "; std::cout.flush();
 
-  for (const auto& pose : this->trajectory) {
-    const auto& t = pose.first;
-    const auto& q = pose.second;
-    // Write to Kitti Format
-    auto R = q.normalized().toRotationMatrix();
-    out_kitti << std::fixed << std::setprecision(9) 
-      << R(0, 0) << " " << R(0, 1) << " " << R(0, 2) << " " << t.x() << " " 
-      << R(1, 0) << " " << R(1, 1) << " " << R(1, 2) << " " << t.y() << " " 
-      << R(2, 0) << " " << R(2, 1) << " " << R(2, 2) << " " << t.z() << "\n";
-  }
+//   for (const auto& pose : this->trajectory) {
+//     const auto& t = pose.first;
+//     const auto& q = pose.second;
+//     // Write to Kitti Format
+//     auto R = q.normalized().toRotationMatrix();
+//     out_kitti << std::fixed << std::setprecision(9) 
+//       << R(0, 0) << " " << R(0, 1) << " " << R(0, 2) << " " << t.x() << " " 
+//       << R(1, 0) << " " << R(1, 1) << " " << R(1, 2) << " " << t.y() << " " 
+//       << R(2, 0) << " " << R(2, 1) << " " << R(2, 2) << " " << t.z() << "\n";
+//   }
 
-  std::cout << "done" << std::endl;
-  res.success = true;
-  return res.success;
-}
+//   std::cout << "done" << std::endl;
+//   res.success = true;
+//   return res.success;
+// }
 
 /**
  * Debug Statements

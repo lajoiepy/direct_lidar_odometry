@@ -9,6 +9,35 @@
 
 #include "dlo/dlo.h"
 
+#include "rclcpp/rclcpp.hpp"
+#include "direct_lidar_odometry/srv/save_pcd.hpp"
+
+// #include <boost/circular_buffer.hpp>
+// #include <boost/algorithm/string.hpp>
+
+// #include <pcl/filters/crop_box.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl_conversions/pcl_conversions.h>
+// #include <pcl/surface/concave_hull.h>
+// #include <pcl/surface/convex_hull.h>
+// #include <pcl_ros/impl/transforms.hpp>
+// #include <pcl_ros/point_cloud.h>
+// #include <pcl_ros/transforms.h>
+// #include <tf2_ros/transform_broadcaster.h>
+
+// #include <geometry_msgs/PoseStamped.h>
+// #include <sensor_msgs/CameraInfo.h>
+// #include <sensor_msgs/Image.h>
+// #include <sensor_msgs/Imu.h>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+
+// #include <direct_lidar_odometry/save_pcd.h>
+// #include <direct_lidar_odometry/save_traj.h>
+// #include <nano_gicp/nano_gicp.hpp>
+
+typedef pcl::PointXYZI PointType;
+
 class dlo::MapNode: public rclcpp::Node{
 
 public:
@@ -30,8 +59,8 @@ private:
 
   void keyframeCB(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& keyframe);
 
-  bool savePcd(direct_lidar_odometry::save_pcd::Request& req,
-               direct_lidar_odometry::save_pcd::Response& res);
+  bool savePcd(std::shared_ptr<direct_lidar_odometry::srv::SavePCD::Request> req,
+               std::shared_ptr<direct_lidar_odometry::srv::SavePCD::Response> res);
 
   void getParams();
 

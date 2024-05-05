@@ -21,16 +21,18 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(pcl_ros REQUIRED)
-find_package( Eigen3 REQUIRED )
+find_package(Eigen3 REQUIRED)
 find_package(Threads REQUIRED)
 
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 
 
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
@@ -42,9 +44,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target
 
 
 include_directories(${PCL_INCLUDE_DIRS})
-add_definitions(${PCL_DEFINITIONS})
-
-
+# add_definitions(${PCL_DEFINITIONS})
 include_directories(${EIGEN3_INCLUDE_DIR})
 
 include_directories(include)
@@ -100,7 +100,7 @@ if(OPENMP_FOUND)
 else(OPENMP_FOUND)
   message("ERROR: OpenMP could not be found.")
 endif(OPENMP_FOUND)
-set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
 file(WRITE ${CMAKE_BINARY_DIR}/test_cpuid.cpp "#include <cpuid.h>")
 try_compile(HAS_CPUID ${CMAKE_BINARY_DIR} ${CMAKE_BINARY_DIR}/test_cpuid.cpp)
 file(REMOVE ${CMAKE_BINARY_DIR}/test_cpuid.cpp)

@@ -9,11 +9,11 @@
 
 #include "dlo/map.h"
 
-void controlC(int sig) {
+// void controlC(int sig) {
 
-  dlo::MapNode::abort();
+//   dlo::MapNode::abort();
 
-}
+// }
 
 int main(int argc, char** argv) {
 
@@ -21,8 +21,8 @@ int main(int argc, char** argv) {
   auto node = std::make_shared<dlo::MapNode>();
 
   rclcpp::executors::MultiThreadedExecutor executor;
-  executer.add_node(node);
-  executer.spin();
+  executor.add_node(node);
+  executor.spin();
 
   rclcpp::shutdown();
 

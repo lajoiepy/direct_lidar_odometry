@@ -48,6 +48,8 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include "nano_gicp/impl/nanoflann_impl.hpp"
 
+typedef pcl::PointXYZI PointType;
+
 namespace nanoflann
 {
 

@@ -9,7 +9,7 @@
 
 #include "dlo/map.h"
 
-std::atomic<bool> dlo::MapNode::abort_(false);
+// std::atomic<bool> dlo::MapNode::abort_(false);
 
 
 /**
@@ -59,7 +59,7 @@ void dlo::MapNode::getParams() {
 
   this->get_parameter("~dlo/odomNode/odom_frame", this->odom_frame);
   this->get_parameter("~dlo/mapNode/publishFullMap", this->publish_full_map_);
-  this->get_parameter("~dlo/mapNode/publishFreq", , this->publish_freq_);
+  this->get_parameter("~dlo/mapNode/publishFreq", this->publish_freq_);
   this->get_parameter("~dlo/mapNode/leafSize", this->leaf_size_);
 
   // // Get Node NS and Remove Leading Character
@@ -125,10 +125,10 @@ void dlo::MapNode::start() {
  * Node Callback
  **/
 
-void dlo::MapNode::keyframeCB(const sensor_msgs::PointCloud2ConstPtr& keyframe) {
+void dlo::MapNode::keyframeCB(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& keyframe) {
 
   // convert scan to pcl format
-  pcl::PointCloud<PointType>::Ptr keyframe_pcl = pcl::PointCloud<PointType>::Ptr (new pcl::PointCloud<PointType>);
+  pcl::PointCloud<PointType>::Ptr keyframe_pcl = std::make_shared<pcl::PointCloud<PointType>>();
   pcl::fromROSMsg(*keyframe, *keyframe_pcl);
 
   // voxel filter
@@ -142,24 +142,23 @@ void dlo::MapNode::keyframeCB(const sensor_msgs::PointCloud2ConstPtr& keyframe) 
 
   if (!this->publish_full_map_) {
     if (keyframe_pcl->points.size() == keyframe_pcl->width * keyframe_pcl->height) {
-      sensor_msgs::PointCloud2 map_ros;
+      sensor_msgs::msg::PointCloud2 map_ros;
       pcl::toROSMsg(*keyframe_pcl, map_ros);
       map_ros.header.stamp = this->now();
       map_ros.header.frame_id = this->odom_frame;
-      this->map_pub.publish(map_ros);
+      this->map_pub->publish(map_ros);
     }
   }
 
 }
 
-bool dlo::MapNode::savePcd(direct_lidar_odometry::save_pcd::Request& req,
-                           direct_lidar_odometry::save_pcd::Response& res) {
+bool dlo::MapNode::savePcd(std::shared_ptr<direct_lidar_odometry::srv::SavePCD::Request> req,
+                           std::shared_ptr<direct_lidar_odometry::srv::SavePCD::Response> res) {
 
-  pcl::PointCloud<PointType>::Ptr m =
-    pcl::PointCloud<PointType>::Ptr (boost::make_shared<pcl::PointCloud<PointType>>(*this->dlo_map));
+  pcl::PointCloud<PointType>::Ptr m = std::make_shared<pcl::PointCloud<PointType>>(*this->dlo_map);
 
-  float leaf_size = req.leaf_size;
-  std::string p = req.save_path;
+  float leaf_size = req->leaf_size;
+  std::string p = req->save_path;
 
   std::cout << std::setprecision(2) << "Saving map to " << p + "/dlo_map.pcd" << "... "; std::cout.flush();
 
@@ -171,14 +170,14 @@ bool dlo::MapNode::savePcd(direct_lidar_odometry::save_pcd::Request& req,
 
   // save map
   int ret = pcl::io::savePCDFileBinary(p + "/dlo_map.pcd", *m);
-  res.success = ret == 0;
+  res->success = ret == 0;
 
-  if (res.success) {
+  if (res->success) {
     std::cout << "done" << std::endl;
   } else {
     std::cout << "failed" << std::endl;
   }
 
-  return res.success;
+  return res->success;
 
 }

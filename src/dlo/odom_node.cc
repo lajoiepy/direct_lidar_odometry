@@ -9,11 +9,11 @@
 
 #include "dlo/odom.h"
 
-void controlC(int sig) {
+// void controlC(int sig) {
 
-  dlo::OdomNode::abort();
+//   dlo::OdomNode::abort();
 
-}
+// }
 
 int main(int argc, char** argv) {
 
