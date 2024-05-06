@@ -26,8 +26,8 @@ dlo::MapNode::MapNode() : Node("dlo_map_node") {
   //   this->publish_timer = this->nh.createTimer(ros::Duration(this->publish_freq_), &dlo::MapNode::publishTimerCB, this);
   // }
   
-  this->keyframe_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("keyframes", 1, std::bind(&dlo::MapNode::keyframeCB, this, std::placeholders::_1));
-  this->map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("map", 1);
+  this->keyframe_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("keyframes", 10, std::bind(&dlo::MapNode::keyframeCB, this, std::placeholders::_1));
+  this->map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("map", 100);
 
   this->save_pcd_srv = this->create_service<direct_lidar_odometry::srv::SavePCD>("save_pcd", std::bind(&dlo::MapNode::savePcd, this, std::placeholders::_1, std::placeholders::_2));
 
@@ -52,15 +52,15 @@ dlo::MapNode::~MapNode() {}
 
 void dlo::MapNode::getParams() {
 
-  this->declare_parameter<std::string>("~dlo/odomNode/odom_frame", "odom");
-  this->declare_parameter<bool>("~dlo/mapNode/publishFullMap", true);
-  this->declare_parameter<double>("~dlo/mapNode/publishFreq", 1.0);
-  this->declare_parameter<double>("~dlo/mapNode/leafSize", 0.5);
+  this->declare_parameter<std::string>("dlo/odomNode/odom_frame", "odom");
+  this->declare_parameter<bool>("dlo/mapNode/publishFullMap", true);
+  this->declare_parameter<double>("dlo/mapNode/publishFreq", 1.0);
+  this->declare_parameter<double>("dlo/mapNode/leafSize", 0.5);
 
-  this->get_parameter("~dlo/odomNode/odom_frame", this->odom_frame);
-  this->get_parameter("~dlo/mapNode/publishFullMap", this->publish_full_map_);
-  this->get_parameter("~dlo/mapNode/publishFreq", this->publish_freq_);
-  this->get_parameter("~dlo/mapNode/leafSize", this->leaf_size_);
+  this->get_parameter("dlo/odomNode/odom_frame", this->odom_frame);
+  this->get_parameter("dlo/mapNode/publishFullMap", this->publish_full_map_);
+  this->get_parameter("dlo/mapNode/publishFreq", this->publish_freq_);
+  this->get_parameter("dlo/mapNode/leafSize", this->leaf_size_);
 
   // // Get Node NS and Remove Leading Character
   // std::string ns = ros::this_node::getNamespace();
