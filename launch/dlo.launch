@@ -9,22 +9,22 @@
 
 <launch>
 
-  <arg name="robot_namespace" default="robot"/>
-  <arg name="rviz" default="true"/>
+  <let name="robot_namespace" value="robot"/>
+  <let name="rviz" value="true"/>
 
-  <arg name="pointcloud_topic" default="lidar"/>
-  <arg name="imu_topic" default="imu"/>
+  <let name="pointcloud_topic" value="lidar"/>
+  <let name="imu_topic" value="imu"/>
 
   <!-- DLO Odometry Node -->
-  <node ns="$(arg robot_namespace)" name="dlo_odom" pkg="direct_lidar_odometry" type="dlo_odom_node" output="screen" clear_params="true">
+  <node namespace="$(var robot_namespace)" name="dlo_odom" pkg="direct_lidar_odometry" exec="dlo_odom_node" output="screen">
 
     <!-- Load parameters -->
-    <rosparam file="$(find direct_lidar_odometry)/cfg/dlo.yaml" command="load"/>
-    <rosparam file="$(find direct_lidar_odometry)/cfg/params.yaml" command="load"/>
+    <param from="$(find-pkg-share direct_lidar_odometry)/cfg/dlo.yaml"/>
+    <param from="$(find-pkg-share direct_lidar_odometry)/cfg/params.yaml"/>
 
     <!-- Subscriptions -->
-    <remap from="~pointcloud" to="$(arg pointcloud_topic)"/>
-    <remap from="~imu" to="$(arg imu_topic)"/>
+    <remap from="~pointcloud" to="$(var pointcloud_topic)"/>
+    <remap from="~imu" to="$(var imu_topic)"/>
 
     <!-- Publications -->
     <remap from="~odom" to="dlo/odom_node/odom"/>
@@ -35,10 +35,10 @@
   </node>
 
   <!-- DLO Mapping Node -->
-  <node ns="$(arg robot_namespace)" name="dlo_map" pkg="direct_lidar_odometry" type="dlo_map_node" output="screen" clear_params="true">
+  <node namespace="$(var robot_namespace)" name="dlo_map" pkg="direct_lidar_odometry" exec="dlo_map_node" output="screen">
 
     <!-- Load parameters -->
-    <rosparam file="$(find direct_lidar_odometry)/cfg/dlo.yaml" command="load"/>
+    <param from="$(find-pkg-share direct_lidar_odometry)/cfg/dlo.yaml"/>
 
     <!-- Subscriptions -->
     <remap from="~keyframes" to="dlo/odom_node/pointcloud/keyframe"/>
@@ -49,6 +49,6 @@
   </node>
 
   <!-- RViz -->
-  <node pkg="rviz" type="rviz" name="dlo_rviz" args="-d $(find direct_lidar_odometry)/launch/dlo.rviz"/>
+  <node pkg="rviz2" exec="rviz2" name="dlo_rviz" args="-d $(find-pkg-share direct_lidar_odometry)/launch/dlo.rviz"/>
 
 </launch>
