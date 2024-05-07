@@ -27,7 +27,7 @@ dlo::MapNode::MapNode() : Node("dlo_map_node") {
   // }
   
   this->keyframe_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("keyframes", 10, std::bind(&dlo::MapNode::keyframeCB, this, std::placeholders::_1));
-  this->map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("map", 100);
+  this->map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("map", 10);
 
   this->save_pcd_srv = this->create_service<direct_lidar_odometry::srv::SavePCD>("save_pcd", std::bind(&dlo::MapNode::savePcd, this, std::placeholders::_1, std::placeholders::_2));
 
