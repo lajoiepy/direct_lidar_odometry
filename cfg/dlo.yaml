@@ -14,7 +14,7 @@
 
       dlo/adaptiveParams: true
 
-      dlo/imu: true
+      dlo/imu: false
       dlo/gravityAlign: false
 
       dlo/odomNode/odom_frame: "world"   #odom
