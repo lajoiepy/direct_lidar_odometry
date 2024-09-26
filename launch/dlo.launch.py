@@ -16,14 +16,14 @@ def generate_launch_description():
 		description = 'Whether or not to launch RViz'
 	)
 
-	pointcloud_topic_cfg = LaunchConfiguration('pointcloud_topic', default='/velodyne/points')
+	pointcloud_topic_cfg = LaunchConfiguration('pointcloud_topic', default='/Carol/velodyne_points')
 	declare_pointcloud_topic_arg = DeclareLaunchArgument(
 		'pointcloud_topic',
 		default_value = pointcloud_topic_cfg,
 		description = 'Input point cloud topic name'
 	)
 
-	imu_topic_cfg = LaunchConfiguration('imu_topic', default = 'dlo_imu_raw')
+	imu_topic_cfg = LaunchConfiguration('imu_topic', default = '/Carol/imu/data')
 	declare_imu_topic_arg = DeclareLaunchArgument(
 		'imu_topic',
 		default_value = imu_topic_cfg,
@@ -42,7 +42,7 @@ def generate_launch_description():
 		remappings = [
 			('pointcloud', pointcloud_topic_cfg),
 			('imu', imu_topic_cfg),
-			# ('odom', '/odom'),
+			('odom', '/r2/odom'),
 			# ('pose', 'dlo/odom_node/pose'),
 			# ('kfs', 'dlo/odom_node/odom/keyframe'),
 			# ('keyframe', 'dlo/odom_node/pointcloud/keyframe')

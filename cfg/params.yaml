@@ -57,5 +57,5 @@
     dlo/odomNode/gicp/s2m/transformationEpsilon: 0.01
     dlo/odomNode/gicp/s2m/euclideanFitnessEpsilon: 0.01
 
-    dlo/odomNode/gicp/s2m/ransac/iterations: 5
+    dlo/odomNode/gicp/s2m/ransac/iterations: 20
     dlo/odomNode/gicp/s2m/ransac/outlierRejectionThresh: 1.0
